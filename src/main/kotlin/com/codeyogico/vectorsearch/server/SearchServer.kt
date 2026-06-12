@@ -14,7 +14,7 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import kotlinx.serialization.json.Json
 
-fun startSearchServer(searcher: ProductSearcher, port: Int = 8080) {
+fun startSearchServer(searcher: ProductSearcher, port: Int = System.getenv("PORT")?.toIntOrNull() ?: 8080) {
     embeddedServer(Netty, port = port) {
         install(ContentNegotiation) {
             json(Json { prettyPrint = true; ignoreUnknownKeys = true })
