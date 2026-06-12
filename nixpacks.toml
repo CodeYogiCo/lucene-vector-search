@@ -3,6 +3,3 @@ nixPkgs = ["jdk17"]
 
 [phases.build]
 cmds = ["./gradlew shadowJar --no-daemon"]
-
-[start]
-cmd = "java -jar build/libs/app.jar"
