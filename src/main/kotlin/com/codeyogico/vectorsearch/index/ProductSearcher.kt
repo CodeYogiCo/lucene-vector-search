@@ -44,8 +44,12 @@ class ProductSearcher(directory: Directory) : AutoCloseable {
         val builder = BooleanQuery.Builder()
             .add(textQuery, BooleanClause.Occur.SHOULD)
             .add(descQuery, BooleanClause.Occur.SHOULD)
-        if (category.isNotEmpty())
+        if (category.isNotEmpty()) {
             builder.add(TermQuery(Term("category", category)), BooleanClause.Occur.MUST)
+            // Without this, SHOULD clauses become optional the moment a MUST clause exists —
+            // every document in the category is returned even with zero text match.
+            builder.setMinimumNumberShouldMatch(1)
+        }
         return search(builder.build(), k)
     }
 
