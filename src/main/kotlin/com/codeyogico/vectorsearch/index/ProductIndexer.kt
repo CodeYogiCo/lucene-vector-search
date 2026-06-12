@@ -25,8 +25,7 @@ class ProductIndexer(directory: Directory) : AutoCloseable {
             add(StoredField("description", product.description))
             add(StoredField("brand", product.brand))
             add(StoredField("rating", product.rating))
-            // HNSW graph over the embedding — lives in the same segment as all other fields.
-            // DOT_PRODUCT over unit vectors == cosine similarity.
+            add(StoredField("imageUrl", product.imageUrl))
             add(KnnFloatVectorField("embedding", embedding, VectorSimilarityFunction.DOT_PRODUCT))
         }
 

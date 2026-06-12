@@ -11,6 +11,7 @@ data class Product(
     val description: String,
     val brand: String,
     val rating: Double,
+    val imageUrl: String = "",
 )
 
 @Serializable

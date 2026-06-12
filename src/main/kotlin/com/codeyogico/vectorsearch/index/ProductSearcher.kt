@@ -104,6 +104,7 @@ class ProductSearcher(directory: Directory) : AutoCloseable {
                     description = doc.get("description"),
                     brand = doc.get("brand"),
                     rating = doc.get("rating").toDouble(),
+                    imageUrl = doc.get("imageUrl") ?: "",
                 ),
                 score = scoreDoc.score,
             )

@@ -14,7 +14,11 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import kotlinx.serialization.json.Json
 
-fun startSearchServer(searcher: ProductSearcher, port: Int = System.getenv("PORT")?.toIntOrNull() ?: 8080) {
+fun startSearchServer(
+    searcher: ProductSearcher,
+    categories: List<String> = emptyList(),
+    port: Int = System.getenv("PORT")?.toIntOrNull() ?: 8080,
+) {
     embeddedServer(Netty, port = port) {
         install(ContentNegotiation) {
             json(Json { prettyPrint = true; ignoreUnknownKeys = true })
@@ -62,11 +66,8 @@ fun startSearchServer(searcher: ProductSearcher, port: Int = System.getenv("PORT
                 )
             }
 
-            // Return all available categories
             get("/api/categories") {
-                call.respond(
-                    listOf("tvs", "laptops", "headphones", "gaming", "phones", "cameras", "tablets", "smart-home")
-                )
+                call.respond(categories)
             }
         }
     }.start(wait = true)
