@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BestBuy Vector Search — Powered by Lucene HNSW</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .score-bar { transition: width 0.4s ease; }
+    .card { transition: transform 0.15s ease, box-shadow 0.15s ease; }
+    .card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.12); }
+    .spinner { animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .mode-btn.active { background: #1e3a5f; color: #fff; }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen font-sans">
+
+  <!-- Header -->
+  <header class="bg-[#003087] text-white shadow-md">
+    <div class="max-w-6xl mx-auto px-6 py-4 flex items-center gap-4">
+      <div class="text-3xl font-black tracking-tight">
+        <span class="text-yellow-400">best</span>buy
+      </div>
+      <div class="h-6 w-px bg-white/30"></div>
+      <div class="text-sm opacity-80">Vector Search — Powered by Lucene HNSW</div>
+    </div>
+  </header>
+
+  <!-- Search bar -->
+  <div class="bg-[#003087] pb-8 pt-4 px-6">
+    <div class="max-w-6xl mx-auto">
+      <div class="flex gap-2">
+        <input id="searchInput" type="text"
+          placeholder="Search for products... (e.g. noise cancelling headphones, gaming laptop under 1500)"
+          class="flex-1 px-5 py-3 rounded-lg text-gray-900 text-base shadow focus:outline-none focus:ring-2 focus:ring-yellow-400"
+          value="wireless noise cancelling headphones" />
+        <button onclick="doSearch()"
+          class="bg-yellow-400 hover:bg-yellow-300 text-gray-900 font-bold px-6 py-3 rounded-lg shadow transition">
+          Search
+        </button>
+      </div>
+
+      <!-- Controls -->
+      <div class="flex flex-wrap items-center gap-4 mt-4">
+        <!-- Category filter -->
+        <div class="flex items-center gap-2 text-white text-sm">
+          <span class="opacity-70">Category:</span>
+          <select id="categoryFilter"
+            class="bg-white/10 border border-white/30 text-white rounded-md px-3 py-1.5 text-sm focus:outline-none">
+            <option value="">All Categories</option>
+            <option value="tvs">TVs</option>
+            <option value="laptops">Laptops</option>
+            <option value="headphones">Headphones</option>
+            <option value="gaming">Gaming</option>
+            <option value="phones">Phones</option>
+            <option value="cameras">Cameras</option>
+            <option value="tablets">Tablets</option>
+            <option value="smart-home">Smart Home</option>
+          </select>
+        </div>
+
+        <!-- Search mode -->
+        <div class="flex items-center gap-1 text-sm">
+          <span class="text-white/70 mr-1">Mode:</span>
+          <button class="mode-btn active px-3 py-1.5 rounded-l-md border border-white/30 text-white text-sm"
+            data-mode="hybrid" onclick="setMode(this)">Hybrid</button>
+          <button class="mode-btn px-3 py-1.5 border-t border-b border-white/30 text-white/70 text-sm"
+            data-mode="vector" onclick="setMode(this)">Vector</button>
+          <button class="mode-btn px-3 py-1.5 rounded-r-md border border-white/30 text-white/70 text-sm"
+            data-mode="text" onclick="setMode(this)">BM25</button>
+        </div>
+
+        <!-- Result count -->
+        <div class="flex items-center gap-2 text-white text-sm">
+          <span class="opacity-70">Results:</span>
+          <select id="limitSelect"
+            class="bg-white/10 border border-white/30 text-white rounded-md px-3 py-1.5 text-sm focus:outline-none">
+            <option value="5">5</option>
+            <option value="10" selected>10</option>
+            <option value="20">20</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Results area -->
+  <main class="max-w-6xl mx-auto px-6 py-6">
+    <!-- Stats bar -->
+    <div id="statsBar" class="hidden flex items-center justify-between mb-4 text-sm text-gray-500">
+      <span id="statsText"></span>
+      <span id="modeTag" class="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700"></span>
+    </div>
+
+    <!-- Loading spinner -->
+    <div id="loading" class="hidden flex justify-center py-16">
+      <svg class="spinner w-10 h-10 text-blue-600" fill="none" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+      </svg>
+    </div>
+
+    <!-- Error -->
+    <div id="errorBox" class="hidden bg-red-50 border border-red-200 text-red-700 rounded-lg px-5 py-4 text-sm"></div>
+
+    <!-- Results grid -->
+    <div id="resultsGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+
+    <!-- Empty state -->
+    <div id="emptyState" class="hidden text-center py-16 text-gray-400">
+      <div class="text-5xl mb-3">🔍</div>
+      <div class="text-lg font-medium text-gray-500">No results found</div>
+      <div class="text-sm mt-1">Try a different query or remove the category filter</div>
+    </div>
+  </main>
+
+  <script>
+    let currentMode = 'hybrid';
+
+    const categoryLabels = {
+      tvs: 'TVs', laptops: 'Laptops', headphones: 'Headphones',
+      gaming: 'Gaming', phones: 'Phones', cameras: 'Cameras',
+      tablets: 'Tablets', 'smart-home': 'Smart Home'
+    };
+
+    const categoryColors = {
+      tvs: 'bg-purple-100 text-purple-700',
+      laptops: 'bg-blue-100 text-blue-700',
+      headphones: 'bg-green-100 text-green-700',
+      gaming: 'bg-red-100 text-red-700',
+      phones: 'bg-yellow-100 text-yellow-700',
+      cameras: 'bg-orange-100 text-orange-700',
+      tablets: 'bg-teal-100 text-teal-700',
+      'smart-home': 'bg-indigo-100 text-indigo-700',
+    };
+
+    function setMode(btn) {
+      currentMode = btn.dataset.mode;
+      document.querySelectorAll('.mode-btn').forEach(b => {
+        b.classList.remove('active');
+        b.classList.add('text-white/70');
+        b.classList.remove('text-white');
+      });
+      btn.classList.add('active');
+      btn.classList.remove('text-white/70');
+      btn.classList.add('text-white');
+    }
+
+    document.getElementById('searchInput').addEventListener('keydown', e => {
+      if (e.key === 'Enter') doSearch();
+    });
+
+    async function doSearch() {
+      const q = document.getElementById('searchInput').value.trim();
+      if (!q) return;
+
+      const category = document.getElementById('categoryFilter').value;
+      const limit = document.getElementById('limitSelect').value;
+
+      const params = new URLSearchParams({ q, mode: currentMode, limit });
+      if (category) params.set('category', category);
+
+      setLoading(true);
+
+      try {
+        const res = await fetch(`/api/search?${params}`);
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: 'Unknown error' }));
+          showError(err.error || 'Search failed');
+          return;
+        }
+        const data = await res.json();
+        renderResults(data, q);
+      } catch (e) {
+        showError('Could not reach the search API. Is the server running?');
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    function renderResults(data, query) {
+      const grid = document.getElementById('resultsGrid');
+      const statsBar = document.getElementById('statsBar');
+      const emptyState = document.getElementById('emptyState');
+      document.getElementById('errorBox').classList.add('hidden');
+
+      if (!data.results || data.results.length === 0) {
+        grid.innerHTML = '';
+        emptyState.classList.remove('hidden');
+        statsBar.classList.add('hidden');
+        return;
+      }
+
+      emptyState.classList.add('hidden');
+      statsBar.classList.remove('hidden');
+      document.getElementById('statsText').textContent =
+        `${data.totalHits} result${data.totalHits !== 1 ? 's' : ''} in ${data.durationMs}ms`;
+      document.getElementById('modeTag').textContent =
+        data.mode === 'hybrid' ? 'BM25 + Vector' : data.mode === 'vector' ? 'Vector (HNSW)' : 'BM25';
+
+      const maxScore = Math.max(...data.results.map(r => r.score));
+
+      grid.innerHTML = data.results.map((r, i) => {
+        const p = r.product;
+        const pct = maxScore > 0 ? Math.round((r.score / maxScore) * 100) : 0;
+        const catColor = categoryColors[p.category] || 'bg-gray-100 text-gray-700';
+        const catLabel = categoryLabels[p.category] || p.category;
+
+        return `
+        <div class="card bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col">
+          <div class="p-5 flex-1">
+            <div class="flex items-start justify-between gap-2 mb-2">
+              <span class="text-xs font-medium px-2 py-0.5 rounded-full ${catColor}">${catLabel}</span>
+              <span class="text-xs text-gray-400 font-mono">#${i + 1}</span>
+            </div>
+            <h3 class="font-semibold text-gray-900 text-sm leading-snug mb-1">${p.name}</h3>
+            <p class="text-xs text-gray-500 leading-relaxed line-clamp-3">${p.description}</p>
+          </div>
+          <div class="border-t border-gray-100 px-5 py-3 flex items-center justify-between">
+            <div>
+              <div class="text-lg font-bold text-gray-900">$${p.price.toFixed(2)}</div>
+              <div class="text-xs text-gray-400">${p.brand} · ⭐ ${p.rating}</div>
+            </div>
+            <div class="text-right">
+              <div class="text-xs text-gray-400 mb-1">Relevance</div>
+              <div class="w-20 bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                <div class="score-bar bg-blue-500 h-full rounded-full" style="width: ${pct}%"></div>
+              </div>
+              <div class="text-xs text-gray-500 mt-0.5">${r.score.toFixed(4)}</div>
+            </div>
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    function setLoading(on) {
+      document.getElementById('loading').classList.toggle('hidden', !on);
+      document.getElementById('resultsGrid').classList.toggle('hidden', on);
+      document.getElementById('statsBar').classList.toggle('hidden', on);
+    }
+
+    function showError(msg) {
+      const el = document.getElementById('errorBox');
+      el.textContent = msg;
+      el.classList.remove('hidden');
+      document.getElementById('resultsGrid').innerHTML = '';
+      document.getElementById('statsBar').classList.add('hidden');
+    }
+
+    // Run initial search on load
+    doSearch();
+  </script>
+</body>
+</html>
