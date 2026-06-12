@@ -45,7 +45,7 @@ fun startSearchServer(searcher: ProductSearcher, port: Int = System.getenv("PORT
                 val start = System.currentTimeMillis()
 
                 val results = when {
-                    mode == "text" -> searcher.textSearch(q, limit)
+                    mode == "text" -> searcher.textSearch(q, category, limit)
                     mode == "vector" && category.isNotEmpty() -> searcher.filteredVectorSearch(q, category, limit)
                     mode == "vector" -> searcher.vectorSearch(q, limit)
                     mode == "hybrid" && category.isNotEmpty() -> searcher.filteredHybridSearch(q, category, limit)

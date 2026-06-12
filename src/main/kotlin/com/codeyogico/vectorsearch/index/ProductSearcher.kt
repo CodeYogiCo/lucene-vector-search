@@ -38,14 +38,15 @@ class ProductSearcher(directory: Directory) : AutoCloseable {
     /**
      * BM25 text search only — for comparison.
      */
-    fun textSearch(query: String, k: Int = 10): List<SearchResult> {
+    fun textSearch(query: String, category: String = "", k: Int = 10): List<SearchResult> {
         val textQuery = QueryParser("name", analyzer).parse(QueryParser.escape(query))
         val descQuery = QueryParser("description", analyzer).parse(QueryParser.escape(query))
-        val combined = BooleanQuery.Builder()
+        val builder = BooleanQuery.Builder()
             .add(textQuery, BooleanClause.Occur.SHOULD)
             .add(descQuery, BooleanClause.Occur.SHOULD)
-            .build()
-        return search(combined, k)
+        if (category.isNotEmpty())
+            builder.add(TermQuery(Term("category", category)), BooleanClause.Occur.MUST)
+        return search(builder.build(), k)
     }
 
     /**
