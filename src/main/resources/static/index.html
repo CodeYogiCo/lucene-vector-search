@@ -188,10 +188,9 @@
       grid.innerHTML = data.results.map((r, i) => {
         const p = r.product;
         const pct = maxScore > 0 ? Math.round((r.score / maxScore) * 100) : 0;
-        const rating = Number(p.rating) || 0;
-        const stars = rating > 0
-          ? '★'.repeat(Math.round(rating)) + '☆'.repeat(5 - Math.round(rating))
-          : '';
+        const rating = Math.min(Number(p.rating) || 0, 5);
+        const filled = Math.round(rating);
+        const stars = rating > 0 ? '★'.repeat(filled) + '☆'.repeat(5 - filled) : '';
 
         const imgHtml = p.imageUrl
           ? `<div class="h-44 flex items-center justify-center p-3 bg-gray-50 border-b border-gray-100">
@@ -209,8 +208,8 @@
               <span class="text-xs text-gray-400 truncate flex-1">${escHtml(p.category)}</span>
               <span class="text-xs text-gray-300 font-mono">#${i + 1}</span>
             </div>
-            <h3 class="font-semibold text-gray-900 text-sm leading-snug mb-1 line-clamp-2">${escHtml(p.name)}</h3>
-            ${p.description ? `<p class="text-xs text-gray-500 leading-relaxed line-clamp-2 mb-2">${escHtml(p.description)}</p>` : ''}
+            <h3 class="font-semibold text-gray-900 text-sm leading-snug mb-1 line-clamp-2">${escHtml(decodeEntities(p.name))}</h3>
+            ${p.description ? `<p class="text-xs text-gray-500 leading-relaxed line-clamp-2 mb-2">${escHtml(decodeEntities(p.description))}</p>` : ''}
             <div class="mt-auto pt-2 border-t border-gray-100 flex items-end justify-between">
               <div>
                 <div class="text-base font-bold text-gray-900">$${(Number(p.price) || 0).toFixed(2)}</div>
@@ -230,6 +229,13 @@
 
     function escHtml(s) {
       return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    // Decode HTML entities from the dataset (e.g. &#8212; → —, &#174; → ®)
+    function decodeEntities(s) {
+      const d = document.createElement('div');
+      d.innerHTML = String(s ?? '');
+      return d.textContent || '';
     }
 
     function setLoading(on) {
