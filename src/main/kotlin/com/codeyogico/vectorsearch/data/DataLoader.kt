@@ -12,9 +12,9 @@ object DataLoader {
             ?: error("bestbuy.json not found in classpath")
 
         val json = Json { ignoreUnknownKeys = true }
-        return json.parseToJsonElement(text).jsonArray.mapNotNull { el ->
-            try { el.jsonObject.toProduct() } catch (_: Exception) { null }
-        }
+        return json.parseToJsonElement(text).jsonArray
+            .take(5000)
+            .mapNotNull { el -> try { el.jsonObject.toProduct() } catch (_: Exception) { null } }
     }
 
     fun categories(products: List<Product>): List<String> =
