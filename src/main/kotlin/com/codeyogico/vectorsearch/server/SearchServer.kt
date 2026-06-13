@@ -14,11 +14,13 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import kotlinx.serialization.json.Json
 
-fun startSearchServer(
-    searcher: ProductSearcher,
-    categories: List<String> = emptyList(),
-    port: Int = System.getenv("PORT")?.toIntOrNull() ?: 8080,
-) {
+class AppState {
+    @Volatile var ready = false
+    @Volatile var searcher: ProductSearcher? = null
+    @Volatile var categories: List<String> = emptyList()
+}
+
+fun startSearchServer(state: AppState, port: Int = System.getenv("PORT")?.toIntOrNull() ?: 8080) {
     embeddedServer(Netty, port = port) {
         install(ContentNegotiation) {
             json(Json { prettyPrint = true; ignoreUnknownKeys = true })
@@ -29,13 +31,23 @@ fun startSearchServer(
         }
 
         routing {
-            // Serve the search UI
             staticResources("/", "static") {
                 default("index.html")
             }
 
-            // Search API
+            // Railway health check — always 200, even while indexing
+            get("/health") {
+                call.respond(mapOf("status" to if (state.ready) "ready" else "indexing"))
+            }
+
             get("/api/search") {
+                if (!state.ready) {
+                    call.respond(HttpStatusCode.ServiceUnavailable,
+                        mapOf("error" to "Index is being built, please try again in a few seconds"))
+                    return@get
+                }
+
+                val searcher = state.searcher!!
                 val q = call.request.queryParameters["q"]?.trim() ?: ""
                 val category = call.request.queryParameters["category"]?.trim() ?: ""
                 val mode = call.request.queryParameters["mode"] ?: "hybrid"
@@ -47,7 +59,6 @@ fun startSearchServer(
                 }
 
                 val start = System.currentTimeMillis()
-
                 val results = when {
                     mode == "text" -> searcher.textSearch(q, category, limit)
                     mode == "vector" && category.isNotEmpty() -> searcher.filteredVectorSearch(q, category, limit)
@@ -67,8 +78,10 @@ fun startSearchServer(
             }
 
             get("/api/categories") {
-                call.respond(categories)
+                call.respond(state.categories)
             }
         }
-    }.start(wait = true)
+    }.start(wait = false) // start immediately so health checks pass during indexing
+
+    println("Server listening on port $port")
 }

@@ -3,23 +3,31 @@ package com.codeyogico.vectorsearch
 import com.codeyogico.vectorsearch.data.DataLoader
 import com.codeyogico.vectorsearch.index.ProductIndexer
 import com.codeyogico.vectorsearch.index.ProductSearcher
+import com.codeyogico.vectorsearch.server.AppState
 import com.codeyogico.vectorsearch.server.startSearchServer
 import org.apache.lucene.store.ByteBuffersDirectory
 
 fun main() {
-    val directory = ByteBuffersDirectory()
+    val state = AppState()
+
+    // Start HTTP server first — Railway health checks need a response immediately.
+    // Search endpoints return 503 until the index is ready.
+    startSearchServer(state)
 
     println("Loading Best Buy dataset...")
     val products = DataLoader.load()
-    val categories = DataLoader.categories(products)
-    println("Loaded ${products.size} products across ${categories.size} categories.")
+    println("Loaded ${products.size} products. Building index...")
 
-    println("Building index...")
+    val directory = ByteBuffersDirectory()
     ProductIndexer(directory).use { indexer ->
         products.forEach { indexer.index(it) }
         indexer.commit()
     }
-    println("Index ready. Starting server on http://localhost:8080")
 
-    startSearchServer(ProductSearcher(directory), categories)
+    state.categories = DataLoader.categories(products)
+    state.searcher = ProductSearcher(directory)
+    state.ready = true
+    println("Index ready — ${products.size} products across ${state.categories.size} categories.")
+
+    Thread.currentThread().join() // keep main thread alive
 }
