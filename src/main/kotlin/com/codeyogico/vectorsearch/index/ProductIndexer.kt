@@ -22,7 +22,9 @@ class ProductIndexer(directory: Directory) : AutoCloseable {
             add(StringField("category", product.category, Field.Store.YES))
             add(DoubleDocValuesField("price", product.price))
             add(StoredField("price", product.price))
-            add(StoredField("description", product.description))
+            // TextField (not StoredField) so BM25 actually searches descriptions and
+            // the highlighter can mark matched terms; Store.YES keeps the original text.
+            add(TextField("description", product.description, Field.Store.YES))
             add(StoredField("brand", product.brand))
             add(StoredField("rating", product.rating))
             add(StoredField("imageUrl", product.imageUrl))

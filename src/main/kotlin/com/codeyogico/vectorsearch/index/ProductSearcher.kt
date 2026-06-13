@@ -4,10 +4,15 @@ import com.codeyogico.vectorsearch.embed.EmbeddingService
 import com.codeyogico.vectorsearch.model.Product
 import com.codeyogico.vectorsearch.model.SearchResult
 import org.apache.lucene.analysis.standard.StandardAnalyzer
+import org.apache.lucene.document.Document
 import org.apache.lucene.index.DirectoryReader
 import org.apache.lucene.index.Term
 import org.apache.lucene.queryparser.classic.QueryParser
 import org.apache.lucene.search.*
+import org.apache.lucene.search.highlight.Highlighter
+import org.apache.lucene.search.highlight.NullFragmenter
+import org.apache.lucene.search.highlight.QueryScorer
+import org.apache.lucene.search.highlight.SimpleHTMLFormatter
 import org.apache.lucene.store.Directory
 
 class ProductSearcher(directory: Directory) : AutoCloseable {
@@ -15,101 +20,113 @@ class ProductSearcher(directory: Directory) : AutoCloseable {
     private val reader = DirectoryReader.open(directory)
     private val searcher = IndexSearcher(reader)
     private val analyzer = StandardAnalyzer()
+    private val formatter = SimpleHTMLFormatter("<mark>", "</mark>")
 
-    /**
-     * Pure HNSW vector search — no text signals.
-     */
+    /** Pure HNSW vector search — no text signals, no highlighting. */
     fun vectorSearch(query: String, k: Int = 10): List<SearchResult> {
         val vec = EmbeddingService.embed(query)
-        return search(KnnFloatVectorQuery("embedding", vec, k), k)
+        return search(KnnFloatVectorQuery("embedding", vec, k), k, null)
     }
 
     /**
      * Filtered HNSW — the category predicate is handed to the graph traversal.
      * Nodes that don't pass the filter are invisible to the walk; not fetched, not discarded.
-     * Correct at 0.1% selectivity exactly the same as at 50%.
      */
     fun filteredVectorSearch(query: String, category: String, k: Int = 10): List<SearchResult> {
         val vec = EmbeddingService.embed(query)
         val filter = TermQuery(Term("category", category))
-        return search(KnnFloatVectorQuery("embedding", vec, k, filter), k)
+        return search(KnnFloatVectorQuery("embedding", vec, k, filter), k, null)
     }
 
-    /**
-     * BM25 text search only — for comparison.
-     */
+    /** BM25 text search over name + description, with matched-term highlighting. */
     fun textSearch(query: String, category: String = "", k: Int = 10): List<SearchResult> {
-        val textQuery = QueryParser("name", analyzer).parse(QueryParser.escape(query))
-        val descQuery = QueryParser("description", analyzer).parse(QueryParser.escape(query))
-        val builder = BooleanQuery.Builder()
-            .add(textQuery, BooleanClause.Occur.SHOULD)
-            .add(descQuery, BooleanClause.Occur.SHOULD)
+        val text = textQuery(query)
+        val builder = BooleanQuery.Builder().add(text, BooleanClause.Occur.SHOULD)
         if (category.isNotEmpty()) {
             builder.add(TermQuery(Term("category", category)), BooleanClause.Occur.MUST)
             // Without this, SHOULD clauses become optional the moment a MUST clause exists —
             // every document in the category is returned even with zero text match.
             builder.setMinimumNumberShouldMatch(1)
         }
-        return search(builder.build(), k)
+        return search(builder.build(), k, text)
     }
 
-    /**
-     * Hybrid: vector + BM25 in a single BooleanQuery.
-     * Two signals, one round-trip — no external merge layer.
-     */
+    /** Hybrid: vector + BM25 in a single BooleanQuery. Two signals, one round-trip. */
     fun hybridSearch(query: String, k: Int = 10): List<SearchResult> {
         val vec = EmbeddingService.embed(query)
-        val vectorQuery = KnnFloatVectorQuery("embedding", vec, k)
-        val textQuery = QueryParser("name", analyzer).parse(QueryParser.escape(query))
-        val descQuery = QueryParser("description", analyzer).parse(QueryParser.escape(query))
-
+        val text = textQuery(query)
         val hybrid = BooleanQuery.Builder()
-            .add(vectorQuery, BooleanClause.Occur.SHOULD)
-            .add(textQuery, BooleanClause.Occur.SHOULD)
-            .add(descQuery, BooleanClause.Occur.SHOULD)
+            .add(KnnFloatVectorQuery("embedding", vec, k), BooleanClause.Occur.SHOULD)
+            .add(text, BooleanClause.Occur.SHOULD)
             .build()
-
-        return search(hybrid, k)
+        return search(hybrid, k, text)
     }
 
-    /**
-     * Filtered hybrid — category filter on the HNSW traversal, BM25 fused in the same pass.
-     */
+    /** Filtered hybrid — category filter on the HNSW traversal, BM25 fused in the same pass. */
     fun filteredHybridSearch(query: String, category: String, k: Int = 10): List<SearchResult> {
         val vec = EmbeddingService.embed(query)
         val filter = TermQuery(Term("category", category))
-        val vectorQuery = KnnFloatVectorQuery("embedding", vec, k, filter)
-        val textQuery = QueryParser("name", analyzer).parse(QueryParser.escape(query))
-
+        val text = textQuery(query)
         val hybrid = BooleanQuery.Builder()
-            .add(vectorQuery, BooleanClause.Occur.SHOULD)
-            .add(textQuery, BooleanClause.Occur.SHOULD)
+            .add(KnnFloatVectorQuery("embedding", vec, k, filter), BooleanClause.Occur.SHOULD)
+            .add(text, BooleanClause.Occur.SHOULD)
             .add(filter, BooleanClause.Occur.MUST)
             .build()
-
-        return search(hybrid, k)
+        return search(hybrid, k, text)
     }
 
-    private fun search(query: Query, k: Int): List<SearchResult> {
+    /** Fetch a single product by id, for the details page. */
+    fun getById(id: String): Product? {
+        val top = searcher.search(TermQuery(Term("id", id)), 1)
+        if (top.scoreDocs.isEmpty()) return null
+        return toProduct(searcher.storedFields().document(top.scoreDocs[0].doc))
+    }
+
+    // name + description as a single SHOULD-of-SHOULD text query, reused for search and highlighting
+    private fun textQuery(query: String): Query {
+        val escaped = QueryParser.escape(query)
+        return BooleanQuery.Builder()
+            .add(QueryParser("name", analyzer).parse(escaped), BooleanClause.Occur.SHOULD)
+            .add(QueryParser("description", analyzer).parse(escaped), BooleanClause.Occur.SHOULD)
+            .build()
+    }
+
+    private fun search(query: Query, k: Int, highlightQuery: Query?): List<SearchResult> {
         val topDocs = searcher.search(query, k)
         val storedFields = searcher.storedFields()
         return topDocs.scoreDocs.map { scoreDoc ->
             val doc = storedFields.document(scoreDoc.doc)
             SearchResult(
-                product = Product(
-                    id = doc.get("id") ?: "",
-                    name = doc.get("name") ?: "",
-                    category = doc.get("category") ?: "",
-                    price = doc.getField("price")?.numericValue()?.toDouble() ?: 0.0,
-                    description = doc.get("description") ?: "",
-                    brand = doc.get("brand") ?: "",
-                    rating = doc.getField("rating")?.numericValue()?.toDouble() ?: 0.0,
-                    imageUrl = doc.get("imageUrl") ?: "",
-                ),
+                product = toProduct(doc),
                 score = scoreDoc.score,
+                nameHighlight = highlightQuery?.let { highlight("name", doc.get("name") ?: "", it) },
+                descriptionHighlight = highlightQuery?.let { highlight("description", doc.get("description") ?: "", it) },
             )
         }
     }
+
+    // Re-analyzes the stored text and wraps matched terms in <mark>; null if nothing matched.
+    private fun highlight(field: String, text: String, query: Query): String? {
+        if (text.isBlank()) return null
+        return try {
+            val highlighter = Highlighter(formatter, QueryScorer(query, field))
+            highlighter.textFragmenter = NullFragmenter() // highlight the whole field, don't fragment
+            highlighter.getBestFragment(analyzer, field, text)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun toProduct(doc: Document) = Product(
+        id = doc.get("id") ?: "",
+        name = doc.get("name") ?: "",
+        category = doc.get("category") ?: "",
+        price = doc.getField("price")?.numericValue()?.toDouble() ?: 0.0,
+        description = doc.get("description") ?: "",
+        brand = doc.get("brand") ?: "",
+        rating = doc.getField("rating")?.numericValue()?.toDouble() ?: 0.0,
+        imageUrl = doc.get("imageUrl") ?: "",
+    )
 
     override fun close() = reader.close()
 }

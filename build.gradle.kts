@@ -24,6 +24,7 @@ dependencies {
     implementation("org.apache.lucene:lucene-core:$luceneVersion")
     implementation("org.apache.lucene:lucene-queryparser:$luceneVersion")
     implementation("org.apache.lucene:lucene-analysis-common:$luceneVersion")
+    implementation("org.apache.lucene:lucene-highlighter:$luceneVersion")
 
     // Ktor server
     implementation("io.ktor:ktor-server-core:$ktorVersion")

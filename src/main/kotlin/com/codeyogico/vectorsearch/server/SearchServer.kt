@@ -80,6 +80,20 @@ fun startSearchServer(state: AppState, port: Int = System.getenv("PORT")?.toIntO
             get("/api/categories") {
                 call.respond(state.categories)
             }
+
+            get("/api/product/{id}") {
+                if (!state.ready) {
+                    call.respond(HttpStatusCode.ServiceUnavailable, mapOf("error" to "Index is being built"))
+                    return@get
+                }
+                val id = call.parameters["id"] ?: ""
+                val product = state.searcher!!.getById(id)
+                if (product == null) {
+                    call.respond(HttpStatusCode.NotFound, mapOf("error" to "Product not found: $id"))
+                } else {
+                    call.respond(product)
+                }
+            }
         }
     }.start(wait = false) // start immediately so health checks pass during indexing
 

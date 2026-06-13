@@ -18,6 +18,9 @@ data class Product(
 data class SearchResult(
     val product: Product,
     val score: Float,
+    // HTML with <mark> around BM25-matched terms; null for pure vector search.
+    val nameHighlight: String? = null,
+    val descriptionHighlight: String? = null,
 )
 
 @Serializable
