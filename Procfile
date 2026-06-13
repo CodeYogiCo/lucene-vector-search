@@ -1,1 +1,1 @@
-web: java -Xmx256m -jar build/libs/app.jar
+web: java --add-modules jdk.incubator.vector -Xmx256m -jar build/libs/app.jar

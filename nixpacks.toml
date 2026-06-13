@@ -1,5 +1,5 @@
 [phases.setup]
-nixPkgs = ["jdk17"]
+nixPkgs = ["jdk21"]
 
 [phases.build]
 cmds = ["./gradlew shadowJar --no-daemon"]

@@ -10,13 +10,20 @@ version = "1.0-SNAPSHOT"
 
 application {
     mainClass.set("com.codeyogico.vectorsearch.MainKt")
+    // Enable Lucene 10's SIMD vector scoring (Panama Vector API is still incubating on JDK 21)
+    applicationDefaultJvmArgs = listOf("--add-modules", "jdk.incubator.vector")
 }
 
 repositories {
     mavenCentral()
 }
 
-val luceneVersion = "9.10.0"
+// Lucene 10 requires Java 21
+kotlin {
+    jvmToolchain(21)
+}
+
+val luceneVersion = "10.4.0"
 val ktorVersion = "2.3.8"
 val djlVersion = "0.28.0"
 

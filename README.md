@@ -34,13 +34,13 @@ This repo is a working demo of both, over ~1,000 real products, with genuine sen
 
 | Layer | Technology |
 |-------|-----------|
-| Vector index | Apache Lucene 9.10 (HNSW via `KnnFloatVectorField`) |
+| Vector index | Apache Lucene 10.4 (HNSW via `KnnFloatVectorField`, SIMD vector scoring) |
 | Embedding | DJL + ONNX Runtime — all-MiniLM-L6-v2, 384-dim |
 | Search | Vector / filtered vector / BM25 / hybrid, with highlighting + source attribution |
 | API server | Ktor 2.3 on Netty |
 | UI | Vanilla JS + Tailwind CSS |
 | Data | ~1,000 products from the public [Algolia ecommerce dataset](https://github.com/algolia/datasets) |
-| Language | Kotlin 1.9 / JVM 17 |
+| Language | Kotlin 1.9 / JVM 21 |
 | Build | Gradle with the Shadow plugin (fat JAR) |
 
 ---
@@ -69,7 +69,7 @@ src/test/kotlin/.../VectorSearchTest.kt — JUnit 5 tests
 
 ## Run locally
 
-**Requirements:** JDK 17+
+**Requirements:** JDK 21+ (Lucene 10 requires Java 21)
 
 ```bash
 git clone https://github.com/CodeYogiCo/lucene-vector-search
