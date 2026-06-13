@@ -97,13 +97,13 @@ class ProductSearcher(directory: Directory) : AutoCloseable {
             val doc = storedFields.document(scoreDoc.doc)
             SearchResult(
                 product = Product(
-                    id = doc.get("id"),
-                    name = doc.get("name"),
-                    category = doc.get("category"),
-                    price = doc.getField("price").numericValue().toDouble(),
-                    description = doc.get("description"),
-                    brand = doc.get("brand"),
-                    rating = doc.get("rating").toDouble(),
+                    id = doc.get("id") ?: "",
+                    name = doc.get("name") ?: "",
+                    category = doc.get("category") ?: "",
+                    price = doc.getField("price")?.numericValue()?.toDouble() ?: 0.0,
+                    description = doc.get("description") ?: "",
+                    brand = doc.get("brand") ?: "",
+                    rating = doc.getField("rating")?.numericValue()?.toDouble() ?: 0.0,
                     imageUrl = doc.get("imageUrl") ?: "",
                 ),
                 score = scoreDoc.score,

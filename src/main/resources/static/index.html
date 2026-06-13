@@ -188,8 +188,9 @@
       grid.innerHTML = data.results.map((r, i) => {
         const p = r.product;
         const pct = maxScore > 0 ? Math.round((r.score / maxScore) * 100) : 0;
-        const stars = p.rating > 0
-          ? '★'.repeat(Math.round(p.rating)) + '☆'.repeat(5 - Math.round(p.rating))
+        const rating = Number(p.rating) || 0;
+        const stars = rating > 0
+          ? '★'.repeat(Math.round(rating)) + '☆'.repeat(5 - Math.round(rating))
           : '';
 
         const imgHtml = p.imageUrl
@@ -212,7 +213,7 @@
             ${p.description ? `<p class="text-xs text-gray-500 leading-relaxed line-clamp-2 mb-2">${escHtml(p.description)}</p>` : ''}
             <div class="mt-auto pt-2 border-t border-gray-100 flex items-end justify-between">
               <div>
-                <div class="text-base font-bold text-gray-900">$${p.price.toFixed(2)}</div>
+                <div class="text-base font-bold text-gray-900">$${(Number(p.price) || 0).toFixed(2)}</div>
                 <div class="text-xs text-gray-400">${escHtml(p.brand)}${stars ? ' · <span class="text-yellow-500">' + stars + '</span>' : ''}</div>
               </div>
               <div class="text-right">
