@@ -21,6 +21,8 @@ data class SearchResult(
     // HTML with <mark> around BM25-matched terms; null for pure vector search.
     val nameHighlight: String? = null,
     val descriptionHighlight: String? = null,
+    // Where this hit came from: "vector", "bm25", or "both" (hybrid).
+    val source: String? = null,
 )
 
 @Serializable

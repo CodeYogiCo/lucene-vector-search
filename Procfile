@@ -1,1 +1,1 @@
-web: java -Xmx400m -jar build/libs/app.jar
+web: java -Xmx256m -jar build/libs/app.jar

@@ -14,7 +14,9 @@ class ProductIndexer(directory: Directory) : AutoCloseable {
     private val writer = IndexWriter(directory, IndexWriterConfig(StandardAnalyzer()))
 
     fun index(product: Product) {
-        val embedding = EmbeddingService.embed("${product.name} ${product.description} ${product.brand}")
+        // MiniLM embeds the natural product text; name first (most query-like), then details.
+        val embedText = "${product.name}. ${product.brand}. ${product.description}"
+        val embedding = EmbeddingService.embed(embedText)
 
         val doc = Document().apply {
             add(StringField("id", product.id, Field.Store.YES))

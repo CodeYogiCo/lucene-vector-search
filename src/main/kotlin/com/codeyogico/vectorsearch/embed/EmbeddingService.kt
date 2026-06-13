@@ -1,47 +1,50 @@
 package com.codeyogico.vectorsearch.embed
 
+import ai.djl.huggingface.translator.TextEmbeddingTranslatorFactory
+import ai.djl.inference.Predictor
+import ai.djl.repository.zoo.Criteria
+
 /**
- * Offline hash-based text embedding.
+ * Real sentence embeddings via DJL + ONNX Runtime, using sentence-transformers/all-MiniLM-L6-v2.
  *
- * Produces a 128-dim unit vector using word unigrams, bigrams, and character
- * trigrams — good enough to demonstrate Lucene HNSW without a model download.
- * Swap embed() for any real model (DJL, OpenAI, etc.) — the index and search
- * code is unchanged.
+ * Produces 384-dim semantic vectors — queries match by meaning, not just shared words.
+ * The model (~90MB) is downloaded once on first use and cached locally.
+ *
+ * The underlying DJL Predictor is not thread-safe, so embed() is synchronized. Fine for a
+ * demo; for high throughput you'd pool predictors instead.
  */
 object EmbeddingService {
 
-    const val DIMS = 128
+    private const val MODEL_URL =
+        "djl://ai.djl.huggingface.onnxruntime/sentence-transformers/all-MiniLM-L6-v2"
 
+    @Volatile
+    private var predictor: Predictor<String, FloatArray>? = null
+
+    /** Loads the MiniLM model. Safe to call multiple times; only loads once. */
+    @Synchronized
+    fun init() {
+        if (predictor != null) return
+        val criteria = Criteria.builder()
+            .setTypes(String::class.java, FloatArray::class.java)
+            .optModelUrls(MODEL_URL)
+            .optEngine("OnnxRuntime")
+            .optTranslatorFactory(TextEmbeddingTranslatorFactory())
+            .build()
+        predictor = criteria.loadModel().newPredictor()
+    }
+
+    /** Embed text into a unit-length vector (so DOT_PRODUCT == cosine similarity). */
+    @Synchronized
     fun embed(text: String): FloatArray {
-        val tokens = tokenize(text)
-        val vector = FloatArray(DIMS)
-
-        for (token in tokens) addHash(vector, token.hashCode(), 1.0f)
-
-        for (i in 0 until tokens.size - 1)
-            addHash(vector, (tokens[i] + "_" + tokens[i + 1]).hashCode(), 0.5f)
-
-        val flat = tokens.joinToString(" ")
-        for (i in 0..flat.length - 3)
-            addHash(vector, flat.substring(i, i + 3).hashCode(), 0.2f)
-
+        if (predictor == null) init()
+        val vector = predictor!!.predict(text.ifBlank { " " })
         normalize(vector)
         return vector
     }
 
-    private fun tokenize(text: String) =
-        text.lowercase().split(Regex("[^a-z0-9]+")).filter { it.length >= 2 }
-
-    private fun addHash(vector: FloatArray, hash: Int, weight: Float) {
-        val primes = intArrayOf(1, 3, 7, 13, 23, 43, 83)
-        for (prime in primes) {
-            val idx = Math.abs((hash.toLong() * prime) % DIMS).toInt()
-            vector[idx] += if ((hash xor prime) >= 0) weight else -weight
-        }
-    }
-
     fun normalize(vector: FloatArray) {
         val norm = Math.sqrt(vector.sumOf { it.toDouble() * it }).toFloat()
-        if (norm > 0f) vector.indices.forEach { vector[it] /= norm }
+        if (norm > 0f) for (i in vector.indices) vector[i] /= norm
     }
 }

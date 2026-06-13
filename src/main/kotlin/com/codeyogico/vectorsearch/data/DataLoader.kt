@@ -13,7 +13,7 @@ object DataLoader {
 
         val json = Json { ignoreUnknownKeys = true }
         return json.parseToJsonElement(text).jsonArray
-            .take(10000)
+            .take(2000)
             .mapNotNull { el -> try { el.jsonObject.toProduct() } catch (_: Exception) { null } }
     }
 

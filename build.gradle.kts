@@ -18,6 +18,7 @@ repositories {
 
 val luceneVersion = "9.10.0"
 val ktorVersion = "2.3.8"
+val djlVersion = "0.28.0"
 
 dependencies {
     // Lucene — HNSW vector search, BM25, query parser
@@ -25,6 +26,11 @@ dependencies {
     implementation("org.apache.lucene:lucene-queryparser:$luceneVersion")
     implementation("org.apache.lucene:lucene-analysis-common:$luceneVersion")
     implementation("org.apache.lucene:lucene-highlighter:$luceneVersion")
+
+    // DJL + ONNX Runtime for real sentence embeddings (all-MiniLM-L6-v2)
+    implementation("ai.djl:api:$djlVersion")
+    implementation("ai.djl.huggingface:tokenizers:$djlVersion")
+    implementation("ai.djl.onnxruntime:onnxruntime-engine:$djlVersion")
 
     // Ktor server
     implementation("io.ktor:ktor-server-core:$ktorVersion")

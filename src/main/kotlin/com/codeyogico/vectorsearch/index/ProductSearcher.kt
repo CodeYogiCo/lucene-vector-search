@@ -25,7 +25,7 @@ class ProductSearcher(directory: Directory) : AutoCloseable {
     /** Pure HNSW vector search — no text signals, no highlighting. */
     fun vectorSearch(query: String, k: Int = 10): List<SearchResult> {
         val vec = EmbeddingService.embed(query)
-        return search(KnnFloatVectorQuery("embedding", vec, k), k, null)
+        return search(KnnFloatVectorQuery("embedding", vec, k), k, null, staticSource = "vector")
     }
 
     /**
@@ -35,7 +35,7 @@ class ProductSearcher(directory: Directory) : AutoCloseable {
     fun filteredVectorSearch(query: String, category: String, k: Int = 10): List<SearchResult> {
         val vec = EmbeddingService.embed(query)
         val filter = TermQuery(Term("category", category))
-        return search(KnnFloatVectorQuery("embedding", vec, k, filter), k, null)
+        return search(KnnFloatVectorQuery("embedding", vec, k, filter), k, null, staticSource = "vector")
     }
 
     /** BM25 text search over name + description, with matched-term highlighting. */
@@ -48,32 +48,39 @@ class ProductSearcher(directory: Directory) : AutoCloseable {
             // every document in the category is returned even with zero text match.
             builder.setMinimumNumberShouldMatch(1)
         }
-        return search(builder.build(), k, text)
+        return search(builder.build(), k, text, staticSource = "bm25")
     }
 
     /** Hybrid: vector + BM25 in a single BooleanQuery. Two signals, one round-trip. */
     fun hybridSearch(query: String, k: Int = 10): List<SearchResult> {
         val vec = EmbeddingService.embed(query)
+        // Give the vector clause real recall (a candidate pool), not just the final k —
+        // otherwise BM25 winners rarely fall inside the vector top-k and everything
+        // looks like a BM25-only match.
+        val vector = KnnFloatVectorQuery("embedding", vec, candidateK(k))
         val text = textQuery(query)
         val hybrid = BooleanQuery.Builder()
-            .add(KnnFloatVectorQuery("embedding", vec, k), BooleanClause.Occur.SHOULD)
+            .add(vector, BooleanClause.Occur.SHOULD)
             .add(text, BooleanClause.Occur.SHOULD)
             .build()
-        return search(hybrid, k, text)
+        return search(hybrid, k, text, vectorComponent = vector, textComponent = text)
     }
 
     /** Filtered hybrid — category filter on the HNSW traversal, BM25 fused in the same pass. */
     fun filteredHybridSearch(query: String, category: String, k: Int = 10): List<SearchResult> {
         val vec = EmbeddingService.embed(query)
         val filter = TermQuery(Term("category", category))
+        val vector = KnnFloatVectorQuery("embedding", vec, candidateK(k), filter)
         val text = textQuery(query)
         val hybrid = BooleanQuery.Builder()
-            .add(KnnFloatVectorQuery("embedding", vec, k, filter), BooleanClause.Occur.SHOULD)
+            .add(vector, BooleanClause.Occur.SHOULD)
             .add(text, BooleanClause.Occur.SHOULD)
             .add(filter, BooleanClause.Occur.MUST)
             .build()
-        return search(hybrid, k, text)
+        return search(hybrid, k, text, vectorComponent = vector, textComponent = text)
     }
+
+    private fun candidateK(k: Int) = maxOf(k, 100)
 
     /** Fetch a single product by id, for the details page. */
     fun getById(id: String): Product? {
@@ -91,7 +98,14 @@ class ProductSearcher(directory: Directory) : AutoCloseable {
             .build()
     }
 
-    private fun search(query: Query, k: Int, highlightQuery: Query?): List<SearchResult> {
+    private fun search(
+        query: Query,
+        k: Int,
+        highlightQuery: Query?,
+        staticSource: String? = null,
+        vectorComponent: Query? = null,
+        textComponent: Query? = null,
+    ): List<SearchResult> {
         val topDocs = searcher.search(query, k)
         val storedFields = searcher.storedFields()
         return topDocs.scoreDocs.map { scoreDoc ->
@@ -101,7 +115,22 @@ class ProductSearcher(directory: Directory) : AutoCloseable {
                 score = scoreDoc.score,
                 nameHighlight = highlightQuery?.let { highlight("name", doc.get("name") ?: "", it) },
                 descriptionHighlight = highlightQuery?.let { highlight("description", doc.get("description") ?: "", it) },
+                source = sourceOf(scoreDoc.doc, staticSource, vectorComponent, textComponent),
             )
+        }
+    }
+
+    // In hybrid mode, ask each component query whether it matched this doc (via explain).
+    // For single-mode searches there's only one source, so use the static label.
+    private fun sourceOf(docId: Int, staticSource: String?, vector: Query?, text: Query?): String? {
+        if (vector == null || text == null) return staticSource
+        val matchedVector = runCatching { searcher.explain(vector, docId).isMatch }.getOrDefault(false)
+        val matchedText = runCatching { searcher.explain(text, docId).isMatch }.getOrDefault(false)
+        return when {
+            matchedVector && matchedText -> "both"
+            matchedVector -> "vector"
+            matchedText -> "bm25"
+            else -> staticSource
         }
     }
 

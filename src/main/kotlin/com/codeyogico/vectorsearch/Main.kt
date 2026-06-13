@@ -1,6 +1,7 @@
 package com.codeyogico.vectorsearch
 
 import com.codeyogico.vectorsearch.data.DataLoader
+import com.codeyogico.vectorsearch.embed.EmbeddingService
 import com.codeyogico.vectorsearch.index.ProductIndexer
 import com.codeyogico.vectorsearch.index.ProductSearcher
 import com.codeyogico.vectorsearch.server.AppState
@@ -14,9 +15,12 @@ fun main() {
     // Search endpoints return 503 until the index is ready.
     startSearchServer(state)
 
-    println("Loading Best Buy dataset...")
+    println("Loading MiniLM embedding model (first run downloads ~90MB)...")
+    EmbeddingService.init()
+
+    println("Loading dataset...")
     val products = DataLoader.load()
-    println("Loaded ${products.size} products. Building index...")
+    println("Loaded ${products.size} products. Embedding + indexing...")
 
     val directory = ByteBuffersDirectory()
     ProductIndexer(directory).use { indexer ->
