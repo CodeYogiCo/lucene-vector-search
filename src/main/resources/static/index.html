@@ -75,6 +75,12 @@
           </select>
         </div>
       </div>
+
+      <!-- Example queries so newcomers know what to try; ★ = great semantic examples -->
+      <div class="flex flex-wrap items-center gap-2 mt-4">
+        <span class="text-white/60 text-xs mr-1">Try:</span>
+        <div id="suggestions" class="flex flex-wrap gap-2"></div>
+      </div>
     </div>
   </div>
 
@@ -139,6 +145,33 @@
 
   <script>
     let currentMode = 'hybrid';
+
+    // Example queries. semantic:true ones have little/no keyword overlap — good for showing
+    // off vector search (they only work because the model understands meaning).
+    const SUGGESTIONS = [
+      { q: 'noise cancelling headphones' },
+      { q: 'wireless earbuds for the gym', semantic: true },
+      { q: 'something to watch movies on', semantic: true },
+      { q: 'gaming headset' },
+      { q: 'tablet for kids', semantic: true },
+      { q: 'laptop for students', semantic: true },
+      { q: 'bluetooth speaker' },
+      { q: 'fitness tracker' },
+      { q: 'iphone case' },
+    ];
+
+    function renderSuggestions() {
+      document.getElementById('suggestions').innerHTML = SUGGESTIONS.map(s => `
+        <button onclick="suggest('${s.q.replace(/'/g, "\\'")}')"
+          class="text-xs px-3 py-1 rounded-full bg-white/10 hover:bg-white/25 border border-white/25 text-white transition">
+          ${s.semantic ? '★ ' : ''}${escHtml(s.q)}
+        </button>`).join('');
+    }
+
+    function suggest(q) {
+      document.getElementById('searchInput').value = q;
+      doSearch();
+    }
 
     // Load categories from API and populate dropdown
     async function loadCategories() {
@@ -336,6 +369,7 @@
       document.getElementById('statsBar').classList.add('hidden');
     }
 
+    renderSuggestions();
     loadCategories().then(() => doSearch());
   </script>
 </body>
